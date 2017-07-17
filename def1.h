@@ -6,9 +6,9 @@
 #define MAX_PSIZE 1
 #define LISTENQ 20
 #define SERVPORT 6666
-#define CMDSIZE 50
 #define TIME_INTERVAL 30
 #define I2C(x) (char)((x) + 48)
+#define BUFSIZE 500
 
 class game;
 class player;

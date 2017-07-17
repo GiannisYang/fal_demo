@@ -11,27 +11,22 @@
 class game {
 protected:
     uint32_t id;
-    uint8_t state, pl_num, turn, landlord;
+    uint8_t state;
+    int pl_num, turn, landlord;
     player *pl[MAX_PSIZE];
     uint32_t listen_fd;
     event *ev_wait;
     event *ev_pl_timer;
 
 public:
-    char cmd[CMDSIZE];
     event_base* const base;
 
     game(event_base *b);
     void wait_pl();
-    int send2cli(int loc, const string &str);
-    /** get commands from a player
-      * this info will be sent to next player */
-    void get_res(const char *str, int id) {
-        memset(cmd, 0, CMDSIZE);
-        sprintf(cmd, "%d#%s", id, str);
-        event_del(ev_pl_timer);
-        schedule(-1, EV_TIMEOUT, this);
-    };
+    void broadcast2cli(char *buf);
+    /** get commands from a player, this information
+      * will be recorded by server and sent to players */
+    void get_res(const char *str, int id);
     static void connect_pl(int fd, short what, void *arg);
     static void schedule(int fd, short what, void *arg);
     static uint8_t det_landlord() {

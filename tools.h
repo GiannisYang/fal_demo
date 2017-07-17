@@ -3,7 +3,7 @@
 
 #include "def1.h"
 
-//static bool has_str(const u_char *p, const char *str);
-//string get_loc_ip();
+int tcp_recv(int sfd, char *buf);
+void add_cmd_head(char *buf, char c, int id);
 
 #endif

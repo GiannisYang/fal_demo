@@ -2,6 +2,7 @@
 #define GAME_CC
 
 #include "game.h"
+#include "tools.h"
 
 game::game(event_base *b): base(b) {
     id = 0;
@@ -10,7 +11,6 @@ game::game(event_base *b): base(b) {
     turn = 0;
     listen_fd = -1;
     ev_wait = NULL;
-    memset(cmd, 0, CMDSIZE);
     for(int i = 0; i < MAX_PSIZE; i++)
         pl[i] = NULL;
 }
@@ -57,12 +57,17 @@ void game::connect_pl(int fd, short what, void *arg) {
     obj->pl[obj->pl_num++] = new player(connfd,
         cli_addr, obj->pl_num, obj);
     /** now a connection is established */
-    string prompt = "Connection successful.";
-    obj->send2cli(obj->pl_num - 1, prompt);
-    prompt = "Waiting for other ";
-    prompt += I2C(MAX_PSIZE - obj->pl_num);
-    prompt += " player(s).";
-    obj->send2cli(-1, prompt);
+    char buf[BUFSIZE];
+    memset(buf, '\0', BUFSIZE);
+    sprintf(buf, "Connection successful.");
+    add_cmd_head(buf, '$', 0);
+    obj->pl[obj->pl_num - 1]->send2cli(buf);
+
+    memset(buf, '\0', BUFSIZE);
+    sprintf(buf, "Waiting for other %d player(s).",
+        MAX_PSIZE - obj->pl_num);
+    add_cmd_head(buf, '$', 0);
+    obj->broadcast2cli(buf);
 
     /************************************************
       * if player num = 3, stop listen event and
@@ -70,24 +75,20 @@ void game::connect_pl(int fd, short what, void *arg) {
       ***********************************************/
     if(obj->pl_num == MAX_PSIZE) {
         /** give prompts and determine the landlord */
-        prompt = "Beginning:";
-        obj->send2cli(-1, prompt);
         obj->landlord = det_landlord();
-        prompt = "You are the landlord.";
-        obj->send2cli(obj->landlord, prompt);
-        prompt = "Player ";
-        prompt += I2C(obj->landlord);
-        prompt += " is the landlord, beat him up";
-        for(int i = 0; i < MAX_PSIZE; i++)
-            if(i != obj->landlord)
-                obj->send2cli(i, prompt);
+        memset(buf, '\0', BUFSIZE);
+        sprintf(buf, "Player %d is the landlord, beat him up.",
+            obj->landlord);
+        add_cmd_head(buf, '$', 0);
+        obj->broadcast2cli(buf);
 
         /** start this game */
         obj->turn = (obj->landlord - 1) % MAX_PSIZE;
         obj->ev_pl_timer = event_new(obj->base, -1, EV_TIMEOUT,
             schedule, obj);
-        timeval tv = {0, 0};
-        event_add(obj->ev_pl_timer, &tv);
+//        timeval tv = {0, 0};
+//        event_add(obj->ev_pl_timer, &tv);
+        schedule(-1, EV_TIMEOUT, obj);
 
         /** delete listen event */
         obj->state = GAME_RUNNING;
@@ -97,33 +98,42 @@ void game::connect_pl(int fd, short what, void *arg) {
     }
 }
 
-int game::send2cli(int loc, const string &str) {
-    /** 0 <= loc <= 2: send to a client
-      * otherwise: send to all 3 clients
-      */
-    if(loc >= 0 && loc < MAX_PSIZE) {
-        send(pl[loc]->conn_fd, str.c_str(),
-            str.length(), MSG_DONTWAIT);
-    } else {
-        for(int i = 0; i < pl_num; i++)
-            send(pl[i]->conn_fd, str.c_str(),
-                str.length(), MSG_DONTWAIT);
-    }
-    return 0;
+void game::broadcast2cli(char *buf) {
+    for(int i = 0; i < pl_num; i++)
+        pl[i]->send2cli(buf);
 }
 
+/** Schedule the actions of players */
 void game::schedule(int fd, short what, void *arg) {
     game *obj = (game *)arg;
     obj->turn = (obj->turn + 1) % MAX_PSIZE;
     player *next_p = obj->pl[obj->turn];
-    if(PL_ONTERN & next_p->state
-        || PL_HINTED & next_p->state
-    ) cout <<"PL_ONTERN & next_p->state || PL_HINTED & next_p->state" <<endl;
-//    return;
 
-    next_p->state = PL_ONTERN;
+    /** print a hint to next player */
+    char hint[BUFSIZE];
+    memset(hint, '\0', BUFSIZE);
+    sprintf(hint, "yt");
+    add_cmd_head(hint, '$', 0);
+    next_p->send2cli(hint);
+    /** the action of next player can be read */
+    next_p->state |= PL_ONTERN;
+    /** register a time limit event of this player */
     timeval tv = {TIME_INTERVAL, 0};
     event_add(obj->ev_pl_timer, &tv);
 }
+
+void game::get_res(const char *str, int id) {
+    event_del(ev_pl_timer);
+    char res[BUFSIZE];
+    memset(res, 0, BUFSIZE);
+    /** get an action of last player */
+    sprintf(res, "%s", str);
+
+    /** update game information to everybody
+      * according to this action */
+    add_cmd_head(res, ':', id);
+    broadcast2cli(res);
+    schedule(-1, EV_TIMEOUT, this);
+};
 
 #endif

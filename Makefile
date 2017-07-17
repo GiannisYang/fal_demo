@@ -13,7 +13,8 @@ serv_objs = main.o	\
 		player.o \
 		tools.o
 
-cli_objs = cli_main.o
+cli_objs = cli_main.o \
+		   tools.o
 
 objs = $(serv_objs) $(cli_objs)
 
