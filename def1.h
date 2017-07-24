@@ -9,8 +9,11 @@
 #define TIME_INTERVAL 30
 #define I2C(x) (char)((x) + 48)
 #define BUFSIZE 500
+#define ALIVE_SIZE 3
+#define ALIVE_INTERVAL 10
 
 class game;
 class player;
+class main_serv;
 
 #endif

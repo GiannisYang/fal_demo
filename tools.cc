@@ -14,7 +14,10 @@ int tcp_recv(int sfd, char *buf) {
     char c;
     memset(buf, '\0', BUFSIZE);
     while(1) {
-        recv(sfd, &c, 1, 0);
+        if(!recv(sfd, &c, 1, 0))
+            return -2;
+//        if(-1 == recv(sfd, &c, 1, 0) && errno != EINTR)
+
         if(c == '#')
             break;
         res = res * 10 + (int)c - 48;

@@ -6,13 +6,6 @@
 
 int main() {
 
-//uint8_t ttt = 0;
-//ttt--;
-//cout << ttt<<endl;
-//ttt = (ttt - 1) % 1;
-//cout << ttt<<endl;
-//return 0;
-
     sockaddr_in servaddr;
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     memset(&servaddr, 0, sizeof(servaddr));
@@ -22,15 +15,37 @@ int main() {
     connect(sockfd, (sockaddr *) &servaddr, sizeof(servaddr));
 
     char buf[BUFSIZE], *p;
-    int res;
+    int res, maxfdp1;
+    fd_set rset;
+    FD_ZERO(&rset);
+    bool input = false;
 
     while(1){
-        if((res = tcp_recv(sockfd, buf)) != -1) {
-            cout << "player " << res << ":";
-            cout << buf << endl;
-            continue;
-        } else if (strcmp("yt", buf) == 0) {
-            cout << buf << endl;
+        if(input)
+            FD_SET(STDIN_FILENO, &rset);
+        FD_SET(sockfd, &rset);
+        maxfdp1 = max(STDIN_FILENO, sockfd) + 1;
+        select(maxfdp1, &rset, NULL, NULL, NULL);
+
+        if(FD_ISSET(sockfd, &rset)) {
+            if((res = tcp_recv(sockfd, buf)) != -1) {
+//                if(res == -2) continue;
+
+                cout << "player " << res << ":";
+                cout << buf << endl;
+            } else if (strcmp("yt", buf) == 0) {
+                cout << "Your turn:" << endl;
+                input = true;
+            } else if (strcmp("ka", buf) == 0) {
+                /** keep alive packet */
+                memset(buf, '\0', BUFSIZE);
+                strcpy(buf, "isal");
+                add_cmd_head(buf, '$', 0);
+                send(sockfd, buf, strlen(buf), 0);
+            } else
+                cout << buf << endl;
+        }
+        if(FD_ISSET(STDIN_FILENO, &rset)) {
             memset(buf, '\0', BUFSIZE);
             read(STDIN_FILENO, buf, BUFSIZE);
             /** delete %\n */
@@ -39,9 +54,8 @@ int main() {
             *p = '\0';
             add_cmd_head(buf, '$', 0);
             send(sockfd, buf, strlen(buf), 0);
-            continue;
-        } else
-            cout << buf << endl;
+            input = false;
+        }
     }
 
     close(sockfd);

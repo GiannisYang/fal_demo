@@ -38,6 +38,8 @@
 		<Unit filename="game.cc" />
 		<Unit filename="game.h" />
 		<Unit filename="main.cc" />
+		<Unit filename="main_serv.cc" />
+		<Unit filename="main_serv.h" />
 		<Unit filename="player.cc" />
 		<Unit filename="player.h" />
 		<Unit filename="tools.cc" />

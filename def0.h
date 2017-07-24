@@ -19,6 +19,8 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <event.h>
+#include <pthread.h>
+#include <sys/queue.h>
 
 using namespace std;
 

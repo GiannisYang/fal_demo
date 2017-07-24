@@ -10,29 +10,33 @@
 
 class game {
 protected:
-    uint32_t id;
-    uint8_t state;
     int pl_num, turn, landlord;
     player *pl[MAX_PSIZE];
-    uint32_t listen_fd;
-    event *ev_wait;
     event *ev_pl_timer;
+    event *ev_keep_alive;
 
 public:
+    uint8_t state;
+    TAILQ_ENTRY(game) (game_next);
     event_base* const base;
 
     game(event_base *b);
-    void wait_pl();
+    ~game();
+    void connect_pl(player *new_p);
     void broadcast2cli(char *buf);
+    void cli_exit(player *p);
     /** get commands from a player, this information
       * will be recorded by server and sent to players */
     void get_res(const char *str, int id);
-    static void connect_pl(int fd, short what, void *arg);
+    /** timeout func of sending keep alive packets */
+    static void send_keep_alive(int fd, short what, void *arg);
     static void schedule(int fd, short what, void *arg);
     static uint8_t det_landlord() {
         srand(unsigned(time(0)));
         return (uint8_t)rand() % MAX_PSIZE;
     };
 };
+
+TAILQ_HEAD(game_list, game);
 
 #endif
