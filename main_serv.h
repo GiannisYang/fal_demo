@@ -22,6 +22,8 @@ public:
     pthread_t tid;
     /** cli queue waiting for game */
     player *clis[WAIT_CLI_SIZE];
+    /** index of clis which is already in a game */
+    map<uint32_t, player *> *player_map;
     int q_start, q_size;
     pthread_mutex_t cli_fds_lock;
 

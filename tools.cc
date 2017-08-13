@@ -41,6 +41,20 @@ void add_cmd_head(char *buf, char c, int id) {
         sprintf(buf, "%s", tmp);
 }
 
+uint32_t ip2key(const string &str) {
+    uint32_t res = 0, num = 0;
+
+    for(int i = 0; i < str.length(); i++) {
+        if(str[i] == '.') {
+            res = res * 256 + num;
+            num = 0;
+            continue;
+        }
+        num = num * 10 + C2I(str[i]);
+    }
+    return res * 256 + num;
+}
+
 //int read_int(const char *p, const char e) {
 //    if(!p)
 //        return -1;

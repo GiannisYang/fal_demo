@@ -22,26 +22,30 @@ game::~game() {
         if(pl[i]) delete pl[i];
 };
 
-//void game::wait_pl() {
-//
-//    sockaddr_in serv_addr;
-//    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-//    memset(&serv_addr, 0, sizeof(serv_addr));
-//    serv_addr.sin_family = AF_INET;
-//    serv_addr.sin_port = htons(SERVPORT);
-//    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-//    bind(listen_fd, (sockaddr *) &serv_addr, sizeof(serv_addr));
-//    listen(listen_fd, LISTENQ);
-//    state = GAME_WAITING;
-//
-//    if (!ev_wait)
-//        ev_wait = event_new(base, listen_fd,
-//            EV_READ | EV_PERSIST, connect_pl, this);
-////    else
-////        event_assign(ev_wait, base, listen_fd,
-////            EV_READ | EV_PERSIST, connect_pl, this);
-//    event_add(ev_wait, NULL);
-//}
+void game::re_connect_pl(player *new_p) {
+    int i;
+    char buf[BUFSIZE];
+    for(i = 0; i < MAX_PSIZE; i++)
+        if(pl[i]->ip_key == new_p->ip_key)
+            break;
+    pl[i]->state = PL_INIT;
+    close(pl[i]->conn_fd);
+    pl[i]->conn_fd = new_p->conn_fd;
+    pl[i]->wait_res_ka = 0;
+    pl[i]->init(i, this);
+    /** for the reconnecting cli */
+    memset(buf, '\0', BUFSIZE);
+    sprintf(buf, "st%d%s", i, pl[i]->cards.c_str());
+    add_cmd_head(buf, '$', 0);
+    pl[i]->send2cli(buf);
+    /** for other clis */
+    memset(buf, '\0', BUFSIZE);
+    sprintf(buf, "Player %d has reconnected", i);
+    add_cmd_head(buf, '$', 0);
+    for(int j = 0; j < MAX_PSIZE; j++)
+        if(j != i)
+            pl[j]->send2cli(buf);
+}
 
 void game::connect_pl(player *new_p) {
     char buf[BUFSIZE];
@@ -61,20 +65,48 @@ void game::connect_pl(player *new_p) {
     if(pl_num == MAX_PSIZE) {
         state = GAME_RUNNING;
 
-        /** give prompts and determine the landlord */
-        landlord = det_landlord();
-        memset(buf, '\0', BUFSIZE);
-        sprintf(buf, "Player %d is the landlord, beat him up.",
-            landlord);
-        add_cmd_head(buf, '$', 0);
-        broadcast2cli(buf);
-
         /** init the keep alive packet event */
         if(!ev_keep_alive)
             ev_keep_alive = event_new(base, -1,
                 EV_TIMEOUT, send_keep_alive, this);
         timeval tv = {ALIVE_INTERVAL, 0};
         event_add(ev_keep_alive, &tv);
+
+        /** determine the landlord */
+        srand(unsigned(time(0)));
+        landlord = (uint8_t)rand() % MAX_PSIZE;
+        for(int i = 0; i < MAX_PSIZE; i++)
+            if(i == landlord) pl[i]->cards_num = 20;
+            else pl[i]->cards_num = 17;
+
+        /** send cards */
+        string cards[MAX_PSIZE];
+        int tmp_p;
+        for(int i = 0; i < 54; i++) {
+            tmp_p = rand() % MAX_PSIZE;
+            if(cards[tmp_p].length() == pl[tmp_p]->cards_num) {
+                i--;
+                continue;
+            }
+            cards[tmp_p] += all_cards[i];
+        }
+
+        /** give prompts */
+        for(int i = 0; i < MAX_PSIZE; i++) {
+//            cards[i] = "6666666666"; debug
+            pl[i]->cards = cards[i];
+            memset(buf, '\0', BUFSIZE);
+            /** the id of player is i, cards are cards[i] */
+            sprintf(buf, "st%d%s", i, cards[i].c_str());
+            add_cmd_head(buf, '$', 0);
+            pl[i]->send2cli(buf);
+        }
+
+        memset(buf, '\0', BUFSIZE);
+        sprintf(buf, "Player %d is the landlord, beat him up.",
+            landlord);
+        add_cmd_head(buf, '$', 0);
+        broadcast2cli(buf);
 
         /** start this game */
         turn = (landlord - 1) % MAX_PSIZE;
@@ -102,13 +134,17 @@ void game::send_keep_alive(int fd, short what, void *arg) {
     add_cmd_head(buf, '$', 0);
     for(int i = 0; i < MAX_PSIZE; i++) {
         p = obj->pl[i];
-        if(p && p->is_alive()) {
+        if(p
+            && ~p->state & PL_EXIT
+        ) {
             p->send2cli(buf);
-            p->wait_res_ka++;
             if(!p->is_alive()) {
             /** call the offline function */
                 cout << "player: "<<i<<" is offline.." << endl;
+                p->state |= PL_OFFLINE;
+                continue;
             }
+            p->wait_res_ka++;
         }
     }
 
@@ -131,12 +167,24 @@ void game::schedule(int fd, short what, void *arg) {
     }
 
     player *this_p = obj->pl[obj->turn];
+    if(this_p->cards_num <= 0) {
+        memset(hint, '\0', BUFSIZE);
+        if(obj->turn == obj->landlord)
+            sprintf(hint, "Landlord is winner !");
+        else
+            sprintf(hint, "Folks are winners !");
+        add_cmd_head(hint, '$', 0);
+        obj->broadcast2cli(hint);
+        /** one game is over */
+    }
+
     player *next_p;
     for(int i = 0; i < MAX_PSIZE; i++) {
         obj->turn = (obj->turn + 1) % MAX_PSIZE;
         next_p = obj->pl[obj->turn];
-        if(next_p && next_p->is_alive())
-            break;
+        if(!(next_p->state & PL_EXIT)
+            && next_p->is_alive()
+        ) break;
     }
 
     /** all cli have quit the game */
@@ -163,9 +211,20 @@ void game::get_res(const char *str, int id) {
     event_del(ev_pl_timer);
 
     char res[BUFSIZE];
+    int len = strlen(str);
     memset(res, 0, BUFSIZE);
     /** get an action of last player */
     sprintf(res, "%s", str);
+    for(int i = 0; i < len; i++) {
+        if(str[i] == ' ') continue;
+
+        for(int j = 0; j < pl[id]->cards.length(); j++)
+            if(pl[id]->cards[j] == str[i]) {
+                pl[id]->cards_num--;
+                pl[id]->cards[j] = ' ';
+                break;
+            }
+    }
 
     /** update game information to everybody
       * according to this action */
@@ -180,9 +239,8 @@ void game::cli_exit(player *p) {
     sprintf(buf, "Player %d has quit the game", p->id);
     add_cmd_head(buf, '$', 0);
     broadcast2cli(buf);
-    delete p;
-    p = NULL;
-    pl_num--;
+    event_del(p->ev_res);
+    p->state = PL_EXIT;
 }
 
 #endif

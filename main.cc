@@ -9,15 +9,17 @@ using namespace std;
 
 int main() {
 
+//    map<int, char> *mm;
+//    mm = new map<int, char>;
+//    pair<map<int, char>::iterator, bool> res;
+//    cout << mm->insert(pair<int, char>(5, 'a')).second << endl;
+//    cout << mm->insert(pair<int, char>(6, 'a')).second << endl;
+//    res = mm->insert(pair<int, char>(5, 'c'));
+//    cout << res.second<<", "<<(res.first)->second<<endl;
+//    return 0;
+
     main_serv *ms = new main_serv;
     ms->main_loop();
-
-//    g->wait_pl();
-//
-//    cout << "Hello world!" << endl;
-//    if(event_base_dispatch(game_base) != 0)
-//        cout << "event_base_dispatch err" << endl;
-//    event_base_free(game_base);
 
     return 0;
 }

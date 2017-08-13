@@ -15,6 +15,7 @@ void* main_serv::main_listen(void *arg) {
 void main_serv::main_loop() {
     pthread_create(&tid, NULL, main_listen, this);
 
+    signal(SIGPIPE, SIG_IGN);
     /** pthread 2: run some games in one event_base */
     if (!ev_assiclis)
         ev_assiclis = event_new(game_base, notify_recv,
@@ -32,6 +33,9 @@ main_serv::main_serv(): ev_connclis(NULL), ev_assiclis(NULL),
     for(int i = 0; i < WAIT_CLI_SIZE; i++)
         clis[i] = NULL;
     pthread_mutex_init(&cli_fds_lock, NULL);
+
+    player_map = new map<uint32_t, player *>;
+
     int fds[2];
     if (pipe(fds)) {
         cout << "Can't create notify pipe" << endl;
@@ -97,23 +101,41 @@ void main_serv::connect_clis(int fd, short what, void *arg) {
 }
 
 void main_serv::assign_clis(int fd, short what, void *arg) {
-//    if(!(what & EV_READ)) return;
-
     main_serv *ms = (main_serv *)arg;
+    pthread_mutex_lock(&ms->cli_fds_lock);
+
+    player *new_pl = ms->clis[(ms->q_start + 1) % WAIT_CLI_SIZE];
     char tmp;
     ms->notify_recv;
     read(ms->notify_recv, &tmp, 1);
 
     game *g = NULL;
-    /** fifo find a game waiting for player(s) */
-    TAILQ_FOREACH(g, ms->game_queue, game_next) {
-        if(g->state & GAME_WAITING)
-            break;
+    pair<map<uint32_t, player *>::iterator, bool> res
+        = ms->player_map->insert(
+        pair<uint32_t, player *>(new_pl->ip_key, new_pl));
+    /** insert this cli into the map
+      * if a cli exit before join a game, there is
+      * no need to insert it to this map */
+    if(res.second
+            /** just for debug .. */
+        || new_pl->ip_addr == "127.0.0.1"
+    ) {
+        /** fifo find a game waiting for player(s) */
+        TAILQ_FOREACH(g, ms->game_queue, game_next) {
+            if(g->state & GAME_WAITING)
+                break;
+        }
+    } else {
+        g = (res.first)->second->gm;
+        g->re_connect_pl(new_pl);
+        delete new_pl;
+        pthread_mutex_unlock(&ms->cli_fds_lock);
+        return;
     }
+
     /** if there is no game waiting, create one;
       * if there are too many active games, cli fd will
       * be waiting in the cli_fds queue */
-    pthread_mutex_lock(&ms->cli_fds_lock);
     if(!g) {
         if(ms->ngames == GAMES_SIZE) {
             pthread_mutex_unlock(&ms->cli_fds_lock);

@@ -23,6 +23,7 @@ public:
     game(event_base *b);
     ~game();
     void connect_pl(player *new_p);
+    void re_connect_pl(player *new_p);
     void broadcast2cli(char *buf);
     void cli_exit(player *p);
     /** get commands from a player, this information
@@ -31,12 +32,16 @@ public:
     /** timeout func of sending keep alive packets */
     static void send_keep_alive(int fd, short what, void *arg);
     static void schedule(int fd, short what, void *arg);
-    static uint8_t det_landlord() {
-        srand(unsigned(time(0)));
-        return (uint8_t)rand() % MAX_PSIZE;
-    };
 };
 
 TAILQ_HEAD(game_list, game);
+
+const char all_cards[] = {
+    '3', '3', '3', '3', '4', '4', '4', '4', '5', '5', '5', '5',
+    '6', '6', '6', '6', '7', '7', '7', '7', '8', '8', '8', '8',
+    '9', '9', '9', '9', '0', '0', '0', '0', 'J', 'J', 'J', 'J',
+    'Q', 'Q', 'Q', 'Q', 'K', 'K', 'K', 'K', 'A', 'A', 'A', 'A',
+    '2', '2', '2', '2', 'B', 'R'
+};
 
 #endif
